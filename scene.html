@@ -95,13 +95,13 @@
         <script id="fragment_snow" type="x-shader/x-fragment">
             varying vec2 vUv;
             varying float height;
-            uniform sampler2D tHeight;
+            uniform sampler2D tDiffuse;
             uniform float maxHeight;
 
 
             void main() {
 
-                gl_FragColor = ( vec4( height / maxHeight ) * 0.3 ) + vec4( 0.7 );
+                gl_FragColor = texture2D(tDiffuse, vUv) * ( vec4( height / maxHeight ) * 0.3 ) + vec4( 0.7 );
 
             }
 
@@ -291,6 +291,14 @@
 
 				sceneRTT = new THREE.Scene();
 
+				var ballMap = THREE.ImageUtils.loadTexture('images/snow-diffuse-spherical3.jpg');
+				ballMap.magFilter = ballMap.minFilter = THREE.LinearFilter;
+
+				var ballBumpMap = THREE.ImageUtils.loadTexture('images/ball-bump-spherical.jpg');
+				ballBumpMap.repeat.x = ballBumpMap.repeat.y = 1;
+				ballBumpMap.magFilter = ballBumpMap.minFilter = THREE.LinearFilter;
+				ballBumpMap.wrapT = ballBumpMap.wrapS = THREE.RepeatWrapping;
+
 
 
 				// Plane
@@ -304,7 +312,7 @@
 				});
 
 				material_snow = new THREE.ShaderMaterial({
-				    uniforms: { tHeight: { type: "t", value: trailTexture }, maxHeight: { type: "f", value: 30.0 } },
+				    uniforms: { tHeight: { type: "t", value: trailTexture }, maxHeight: { type: "f", value: 30.0 }, tDiffuse: { type: "t", value: ballMap } },
 				    vertexShader: document.getElementById('vertex_snow').textContent,
 				    fragmentShader: document.getElementById('fragment_snow').textContent,
 				});
@@ -361,21 +369,21 @@
 				geometry = new THREE.BoxGeometry( 100, 100, 100 );
 				//material = new THREE.MeshDepthMaterial( { overdraw: 0.5 } );
 
-				for ( var i = 0; i < 1; i ++ ) {
+				//for ( var i = 0; i < 1; i ++ ) {
 
-				    cube = new THREE.Mesh(geometry, material2);
+				//    cube = new THREE.Mesh(geometry, material2);
 
-					cube.position.x = ( i % 5 ) * 200 - 400;
-					cube.position.z = Math.floor( i / 5 ) * 200 - 350;
-					//cube.rotation.x = Math.random() * 200 - 100;
-					//cube.rotation.y = Math.random() * 200 - 100;
-					//cube.rotation.z = Math.random() * 200 - 100;
+				//	cube.position.x = ( i % 5 ) * 200 - 400;
+				//	cube.position.z = Math.floor( i / 5 ) * 200 - 350;
+				//	//cube.rotation.x = Math.random() * 200 - 100;
+				//	//cube.rotation.y = Math.random() * 200 - 100;
+				//	//cube.rotation.z = Math.random() * 200 - 100;
 
-					scene.add(cube);
+				//	scene.add(cube);
 
-					objects.push( cube );
+				//	objects.push( cube );
 
-				}
+				//}
 
 				//ball = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 32), material3);
 				//ball.position.set(0, 16.0, 0.0);
@@ -392,13 +400,7 @@
 				reflectionMap.repeat.x = reflectionMap.repeat.y = 4
 				reflectionMap.wrapT = reflectionMap.wrapS = THREE.RepeatWrapping;
 
-				var ballMap = THREE.ImageUtils.loadTexture('images/snow-diffuse-spherical3.jpg');
-				ballMap.magFilter = ballMap.minFilter = THREE.LinearFilter;
 
-				var ballBumpMap = THREE.ImageUtils.loadTexture('images/ball-bump-spherical.jpg');
-				ballBumpMap.repeat.x = ballBumpMap.repeat.y = 1;
-				ballBumpMap.magFilter = ballBumpMap.minFilter = THREE.LinearFilter;
-				ballBumpMap.wrapT = ballBumpMap.wrapS = THREE.RepeatWrapping;
 
 				//ball = new THREE.Mesh(snowBall.clone(), new THREE.MeshPhongMaterial({ map: ballMap, perPixel:true, color: 0xeeeeee, ambient:0xeeeeee, bubmpMap: ballBumpMap, bumpScale:3, specularMap: reflectionMap, specular:0x999999, shininess:4 }));
 				ball = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 32), new THREE.MeshPhongMaterial({ map: ballMap, perPixel:true, color: 0xeeeeee, ambient:0xeeeeee, bubmpMap: ballBumpMap, bumpScale:3, specularMap: reflectionMap, specular:0x999999, shininess:4 }));//new THREE.MeshBasicMaterial({ map: THREE.ImageUtils.loadTexture('images/snow-diffuse4.jpg')}));//material3); new THREE.MeshPhongMaterial({ map: THREE.ImageUtils.loadTexture('images/2_no_clouds_4k.jpg'), bumpMap: THREE.ImageUtils.loadTexture('images/elev_bump_4k.jpg'), bumpScale: 0.005, specularMap: THREE.ImageUtils.loadTexture('images/water_4k.png'), specular: new THREE.Color('grey') })); //material3);
