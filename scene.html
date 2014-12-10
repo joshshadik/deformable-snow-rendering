@@ -1,7 +1,7 @@
 ﻿<!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js canvas - depth material</title>
+		<title>snow rendering</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<style>
@@ -17,22 +17,41 @@
 
 		<script src="js/three.min.js"></script>
 
-		<script src="js/Projector.js"></script>
-		<script src="js/CanvasRenderer.js"></script>
-
 		<script src="js/stats.min.js"></script>
         <script id="fragment_depth" type="x-shader/x-fragment">
             varying vec2 vUv;
             varying float depth;
             uniform sampler2D tHeight;
 
+            vec4 pack (float depth)
+            {
+            const vec4 bitSh = vec4(256 * 256 * 256,
+            256 * 256,
+            256,
+            1.0);
+            const vec4 bitMsk = vec4(0,
+            1.0 / 256.0,
+            1.0 / 256.0,
+            1.0 / 256.0);
+            vec4 comp = fract(depth * bitSh);
+            comp -= comp.xxyz * bitMsk;
+            return comp;
+            }
+
+
+            float unpack (vec4 colour)
+            {
+            const vec4 bitShifts = vec4(1.0 / (256.0 * 256.0 * 256.0),
+            1.0 / (256.0 * 256.0),
+            1.0 / 256.0,
+            1);
+            return dot(colour , bitShifts);
+            }
+
+
             void main() {
-                float d = texture2D( tHeight, vUv ).r;
-                if( (1.0 - depth) > d )
-                {
-                    d = 1.0 - depth;
-                }
-                gl_FragColor = vec4( d );
+                float d = 1.0 - depth;
+                gl_FragColor = pack( d );
 
             }
 
@@ -44,32 +63,86 @@
             void main() {
                 vUv = uv;
                 gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-                depth = gl_Position.z;
+                depth = gl_Position.z / gl_Position.w;
                 vUv = gl_Position.xy;
             }
 
         </script>
+
+        <script id="fragment_normal" type="x-shader/x-fragment">
+            varying vec2 vUv;
+            varying vec3 norm;
+
+
+            void main() {
+            gl_FragColor = vec4( norm, 1.0 );
+
+            }
+
+        </script>
+        <script id="vertex_normal" type="x-shader/x-vertex">
+            varying vec2 vUv;
+            varying vec3 norm;
+
+            void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+            norm = normal;
+            }
+
+        </script>
+
         <script id="fragment_snow" type="x-shader/x-fragment">
             varying vec2 vUv;
+            varying float height;
             uniform sampler2D tHeight;
+            uniform float maxHeight;
+
 
             void main() {
 
-                gl_FragColor = ( ( vec4(1) - texture2D( tHeight, vUv ) ) * 0.3 ) + vec4( 0.7 );
+                gl_FragColor = ( vec4( height / maxHeight ) * 0.3 ) + vec4( 0.7 );
 
             }
 
         </script>       
         <script id="vertex_snow" type="x-shader/x-vertex">
             varying vec2 vUv;
+            varying float height;
             uniform sampler2D tHeight;
             uniform float maxHeight;
+
+            vec4 pack (float depth)
+            {
+            const vec4 bitSh = vec4(256 * 256 * 256,
+            256 * 256,
+            256,
+            1.0);
+            const vec4 bitMsk = vec4(0,
+            1.0 / 256.0,
+            1.0 / 256.0,
+            1.0 / 256.0);
+            vec4 comp = fract(depth * bitSh);
+            comp -= comp.xxyz * bitMsk;
+            return comp;
+            }
+
+
+            float unpack (vec4 colour)
+            {
+            const vec4 bitShifts = vec4(1.0 / (256.0 * 256.0 * 256.0),
+            1.0 / (256.0 * 256.0),
+            1.0 / 256.0,
+            1);
+            return dot(colour , bitShifts);
+            }
+
 
             void main() {
 
                 vUv = uv;
                 vUv.x = 1.0 - vUv.x;
-                float height = ( 1.0 - texture2D( tHeight, vUv ).r ) * maxHeight;
+                height = ( 1.0 - unpack( texture2D( tHeight, vUv ) ) ) * maxHeight;
                 gl_Position = projectionMatrix * modelViewMatrix * vec4( position.x, position.y, position.z + height, 1.0 );
             }
 
@@ -81,7 +154,9 @@
 
 			var camera, scene, renderer;
 
-			var rtTexture;
+			var rtTexture, rtTemp;
+
+			var trailTexture;
 
 			var cube, plane, objects = [], ball;
 
@@ -101,12 +176,95 @@
 			var targetMoveLeft = false;
 			var targetMoveRight = false;
 
+			var texRes = 256;
+			var planeWidth = 2000;
+
+			var planeSeg = 500;
+
 			var debugContext;
 
 			var material_depth, material_snow;
 
 			init();
 			animate();
+
+
+			function unpack(unpacked, start, end) {
+			    var i, packed = 0;
+			    for (i = start; i < end; i++) {
+			        packed += unpacked[i] << (8 * i) >>> 0;
+			    }
+			    return packed;
+			};
+
+			function pack(packed) {
+			    var unpacked = [];
+			    do {
+			        unpacked.push(packed >> (8 * (unpacked.length)) >>> 0 & 255);
+			    }
+			    while (packed >= (1 << (8 * (unpacked.length)) >>> 0) && unpacked.length < 4);
+			    return unpacked;
+			};
+
+			function generateDataTexture(width, height, color) {
+			    var size = width * height;
+			    var data = new Uint8Array(4 * size);
+
+			    var col = pack(1.0);
+
+			    var r = Math.floor(col[0] * 255);
+			    var g = Math.floor(col[1] * 255);
+			    var b = Math.floor(col[2] * 255);
+			    var a = Math.floor(col[3] * 255);
+			    //var a = Math.floor( color.a * 255 );
+
+			    for (var i = 0; i < size; i++) {
+			        if (i == size / 2 + width / 2) {
+			            data[i * 4] = 255;
+			            data[i * 4 + 1] = g;
+			            data[i * 4 + 2] = b;
+			            data[i * 4 + 3] = a;
+			        } else {
+			            data[i * 4] = r;
+			            data[i * 4 + 1] = g;
+			            data[i * 4 + 2] = b;
+			            data[i * 4 + 3] = a;
+			        }
+			    }
+
+			    var texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
+			    texture.flipY = false;
+			    texture.needsUpdate = true;
+
+			    return texture;
+			}
+
+
+
+
+			function combineTrailTextures( width, height, temp, tex )
+			{
+			    var size = width * height;
+			    var data = new Uint8Array(4 * size);
+
+			    //var a = Math.floor( color.a * 255 );
+
+			    for (var i = 0; i < size; i++) {
+			        if (unpack(temp.image.data, i * 4, i * 4 + 4) > unpack(tex.image.data, i * 4, i * 4 + 4))
+			        {
+			            tex.image.data[i * 4] = temp.image.data[i * 4];
+			            tex.image.data[i * 4 + 1] = temp.image.data[i * 4 + 1];
+			            tex.image.data[i * 4 + 2] = temp.image.data[i * 4 + 2];
+			            tex.image.data[i * 4 + 3] = temp.image.data[i * 4 + 3];
+			        }
+			        //data[i * 4] = r;
+			        //data[i * 4 + 1] = g;
+			        //data[i * 4 + 2] = b;
+			        //data[i * 4 + 3] = 255;
+			    }
+
+			    tex.needsUpdate = true;
+			}
 
 			function init() {
 
@@ -117,30 +275,36 @@
 				camera.position.set(0, 100, 1000);
 				camera.target = new THREE.Vector3(0, 0, 0);
 
-				cameraRTT = new THREE.OrthographicCamera(-500, 500, 500, -500, -5, 30);
+				cameraRTT = new THREE.OrthographicCamera(-planeWidth / 2, planeWidth / 2, planeWidth / 2, -planeWidth / 2, 0.1, 30);
 				cameraRTT.position.set(0, -100, 0);
 				
 				cameraRTT.target = new THREE.Vector3(0, 0, 0);
 
 
-				rtTexture = new THREE.WebGLRenderTarget(512, 512, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBFormat });
+				rtTexture = new THREE.WebGLRenderTarget(texRes, texRes, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat });
+				rtTemp = new THREE.WebGLRenderTarget(texRes, texRes, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat });
+
+				trailTexture = generateDataTexture(texRes, texRes, 0xffffff);
+				tempTexture = generateDataTexture(texRes, texRes, 0xffffff);
 
 				scene = new THREE.Scene();
 
 				sceneRTT = new THREE.Scene();
 
+
+
 				// Plane
 
 				material_depth = new THREE.ShaderMaterial({
-				    uniforms: { tHeight: { type: "t", value: rtTexture } },
+				    uniforms: { tHeight: { type: "t", value: trailTexture } },
 				    vertexShader: document.getElementById('vertexShader').textContent,
 				    fragmentShader: document.getElementById('fragment_depth').textContent,
-
+                    transparent: false
 				    //depthWrite: true
 				});
 
 				material_snow = new THREE.ShaderMaterial({
-				    uniforms: { tHeight: { type: "t", value: rtTexture }, maxHeight: { type: "f", value: 30.0 } },
+				    uniforms: { tHeight: { type: "t", value: trailTexture }, maxHeight: { type: "f", value: 30.0 } },
 				    vertexShader: document.getElementById('vertex_snow').textContent,
 				    fragmentShader: document.getElementById('fragment_snow').textContent,
 				});
@@ -161,30 +325,30 @@
 
 				var material3 = new THREE.MeshBasicMaterial({color: new THREE.Color( 0xff3355 ) });
 
-				plane = new THREE.Mesh(new THREE.PlaneBufferGeometry(1000, 1000, 50, 50), material_snow);
-				plane.position.y = -80;
+				plane = new THREE.Mesh(new THREE.PlaneBufferGeometry(planeWidth, planeWidth, planeSeg, planeSeg), material_snow);
+				plane.position.y = -50;
 				plane.rotation.x = -Math.PI / 2;
 				plane.rotation.z = -Math.PI / 2;
 				cameraRTT.position.set(plane.position.x, plane.position.y, plane.position.z);
 
 				cameraRTT.lookAt(cameraRTT.target);
 
-				var snow_start = new THREE.ImageUtils.loadTexture("img/snow_start.png", {}, function () {
-				    var tex_mat = new THREE.MeshBasicMaterial({
-				        map: snow_start
-				    });
-				    plane_snow_start = new THREE.Mesh(new THREE.PlaneBufferGeometry(1000, 1000, 120, 120), tex_mat);
-				    plane_snow_start.position.y = -30.5;
-				    plane_snow_start.rotation.x = Math.PI / 2;
-				    scene.add(plane_snow_start);
-				    renderer.autoClear = false;
-				    renderer.render(scene, cameraRTT, rtTexture, true);
+				//var snow_start = new THREE.ImageUtils.loadTexture("img/snow_start.png", {}, function () {
+				//    var tex_mat = new THREE.MeshBasicMaterial({
+				//        map: snow_start
+				//    });
+				//    plane_snow_start = new THREE.Mesh(new THREE.PlaneBufferGeometry(1000, 1000, 120, 120), tex_mat);
+				//    plane_snow_start.position.y = -30.5;
+				//    plane_snow_start.rotation.x = Math.PI / 2;
+				//    scene.add(plane_snow_start);
+				//    renderer.autoClear = false;
+				//    renderer.render(scene, cameraRTT, rtTexture, false);
 
-				    scene.remove(plane_snow_start);
+				//    scene.remove(plane_snow_start);
 
 
-				    material_depth.setValues({ tHeight: { type: "t", value: snow_start } });
-				});
+				//    //material_depth.setValues({ tHeight: { type: "t", value: snow_start } });
+				//});
 
 
 				scene.add(plane);
@@ -213,7 +377,7 @@
 				}
 
 				ball = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 32), material3);
-				ball.position.set(0, -10.0, 0.0);
+				ball.position.set(0, 16.0, 0.0);
 
 				scene.add(ball);
 
@@ -286,6 +450,7 @@
 
 			}
 
+
 			function render() {
 
 				if ( moveForward ) ball.position.z -= 10;
@@ -297,8 +462,8 @@
 				if ( moveUp ) camera.position.y += 10;
 				if ( moveDown ) camera.position.y -= 10;
 
-				if ( targetMoveLeft ) camera.target.x -= 10;
-				if ( targetMoveRight ) camera.target.x += 10;
+				if ( targetMoveLeft ) ball.position.y -= 10;
+				if (targetMoveRight) ball.position.y += 10;
 
 			    camera.lookAt(camera.target);
 			    cameraRTT.lookAt(cameraRTT.target);
@@ -343,10 +508,21 @@
 				
 			    //material_depth.setValues({ tHeight: { type: "t", value: rtTexture.clone() } });
 
+			    material_depth.setValues({ tHeight: { type: "t", value: trailTexture } });
 				scene.overrideMaterial = material_depth;
-				renderer.autoClear = false;
-				renderer.render(scene, cameraRTT, rtTexture, false);
+				//renderer.autoClear = false;
+				renderer.render(scene, cameraRTT, rtTexture, true);
+				//renderer.render(scene, cameraRTT, rtTemp, false);
+				//rtTemp = rtTexture;
 
+				var gl = renderer.getContext();
+				gl.readPixels(0, 0, texRes, texRes, gl.RGBA, gl.UNSIGNED_BYTE, tempTexture.image.data);
+				tempTexture.needsUpdate = true;
+
+				combineTrailTextures(texRes, texRes, tempTexture, trailTexture);
+
+				renderer.autoClear = true;
+				renderer.setClearColor( 0x3333cc , 0.0);
 
 				scene.overrideMaterial = null;
 				renderer.render(scene, camera);
