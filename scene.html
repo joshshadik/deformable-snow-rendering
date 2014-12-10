@@ -271,7 +271,7 @@
 				container = document.createElement( 'div' );
 				document.body.appendChild( container );
 
-				camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 5000);
+				camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 7000);
 				camera.position.set(0, 100, 1000);
 				camera.target = new THREE.Vector3(0, 0, 0);
 
@@ -318,7 +318,8 @@
 				container.appendChild(renderer.domElement);
 
 
-
+				/// Light setting
+				initLight();
 
 
 				var material2 = new THREE.MeshDepthMaterial({ side: THREE.DoubleSide, overdraw: 0.5 });
@@ -376,8 +377,35 @@
 
 				}
 
-				ball = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 32), material3);
+				//ball = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 32), material3);
+				//ball.position.set(0, 16.0, 0.0);
+				//scene.add(new THREE.AmbientLight(0x333333));
+
+				// var light = new THREE.DirectionalLight(0xffffff,0.9);
+				// light.position.set(5,3,5);
+				// scene.add(light);
+
+				var snowBall = new THREE.IcosahedronGeometry(5,3);
+				snowBall.isDynamic = true;
+
+				var reflectionMap = THREE.ImageUtils.loadTexture('images/snow-reflection2.jpg');
+				reflectionMap.repeat.x = reflectionMap.repeat.y = 4
+				reflectionMap.wrapT = reflectionMap.wrapS = THREE.RepeatWrapping;
+
+				var ballMap = THREE.ImageUtils.loadTexture('images/snow-diffuse-spherical3.jpg');
+				ballMap.magFilter = ballMap.minFilter = THREE.LinearFilter;
+
+				var ballBumpMap = THREE.ImageUtils.loadTexture('images/ball-bump-spherical.jpg');
+				ballBumpMap.repeat.x = ballBumpMap.repeat.y = 1;
+				ballBumpMap.magFilter = ballBumpMap.minFilter = THREE.LinearFilter;
+				ballBumpMap.wrapT = ballBumpMap.wrapS = THREE.RepeatWrapping;
+
+				//ball = new THREE.Mesh(snowBall.clone(), new THREE.MeshPhongMaterial({ map: ballMap, perPixel:true, color: 0xeeeeee, ambient:0xeeeeee, bubmpMap: ballBumpMap, bumpScale:3, specularMap: reflectionMap, specular:0x999999, shininess:4 }));
+				ball = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 32), new THREE.MeshPhongMaterial({ map: ballMap, perPixel:true, color: 0xeeeeee, ambient:0xeeeeee, bubmpMap: ballBumpMap, bumpScale:3, specularMap: reflectionMap, specular:0x999999, shininess:4 }));//new THREE.MeshBasicMaterial({ map: THREE.ImageUtils.loadTexture('images/snow-diffuse4.jpg')}));//material3); new THREE.MeshPhongMaterial({ map: THREE.ImageUtils.loadTexture('images/2_no_clouds_4k.jpg'), bumpMap: THREE.ImageUtils.loadTexture('images/elev_bump_4k.jpg'), bumpScale: 0.005, specularMap: THREE.ImageUtils.loadTexture('images/water_4k.png'), specular: new THREE.Color('grey') })); //material3);
 				ball.position.set(0, 16.0, 0.0);
+
+				ball.castShadow = true;
+				ball.receiveShadow = false;
 
 				scene.add(ball);
 
@@ -528,6 +556,40 @@
 				renderer.render(scene, camera);
 
 
+			}
+
+			function initLight() {
+				ambientLight = new THREE.AmbientLight(0x777777, 0.4);
+				scene.add(ambientLight);
+
+				var hemiLight = new THREE.HemisphereLight( 0xfefefe,0xdce9f8 , 0.4 );
+				scene.add(hemiLight);
+
+				dirLight = new THREE.DirectionalLight( 0xf9fafc, 0.97);
+    			dirLight.position.set( -500, 1400, -200  );
+
+    			dirLight.shadowMapWidth = 2048;
+    			dirLight.shadowMapHeight = 2048;
+
+    			dirLight.shadowCameraNear = 1150;
+    			dirLight.shadowCameraFar = 2500;
+    			dirLight.shadowDarkness = 0.3;
+    			dirLight.shadowBias = 0.039;
+
+    			dirLight.shadowCameraLeft = -1224;
+    			dirLight.shadowCameraRight = 1224;
+    			dirLight.shadowCameraTop = 1224;
+    			dirLight.shadowCameraBottom = -1224;
+    			dirLight.shadowCameraVisible = false;
+
+    			dirLight.castShadow = true;
+
+    			scene.add(dirLight);
+
+    			// var dirLight2 = new THREE.Directionallight( 0xf9fafc, 0.5);
+    			// dirLight2.position.set(500, 1400, 200);
+
+    			// scene.add(dirLight2);
 			}
 
 		</script>
